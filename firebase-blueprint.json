@@ -1,0 +1,113 @@
+{
+  "entities": {
+    "Survey": {
+      "title": "Survey",
+      "description": "A survey or feedback form created by an HR professional.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "folderId": { "type": "string" },
+        "status": { "type": "string", "enum": ["Draft", "Active", "Closed"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "responses": { "type": "number" },
+        "completionRate": { "type": "number" },
+        "isStarred": { "type": "boolean" },
+        "isShared": { "type": "boolean" },
+        "lastResponse": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "ownerEmail": { "type": "string" },
+        "sharedEmails": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "links": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "url": { "type": "string" },
+              "clicks": { "type": "number" },
+              "status": { "type": "string", "enum": ["Active", "Paused"] }
+            }
+          }
+        }
+      },
+      "required": ["title", "status", "ownerId"]
+    },
+    "Response": {
+      "title": "Response",
+      "description": "A set of answers submitted by a respondent.",
+      "type": "object",
+      "properties": {
+        "surveyId": { "type": "string" },
+        "respondentId": { "type": "string" },
+        "answers": { "type": "object" },
+        "submittedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["surveyId", "answers", "submittedAt"]
+    },
+    "Folder": {
+      "title": "Folder",
+      "description": "A folder used to organize surveys.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "userId": { "type": "string" },
+        "order": { "type": "number" }
+      },
+      "required": ["name", "userId", "order"]
+    },
+    "Comment": {
+      "title": "Comment",
+      "description": "A comment left on a specific question in a survey.",
+      "type": "object",
+      "properties": {
+        "questionId": { "type": "string" },
+        "text": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["questionId", "text", "createdAt"]
+    },
+    "UserRecord": {
+      "title": "UserRecord",
+      "description": "Information about a registered user in the application.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "lastLoginAt": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "email"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserRecord",
+      "description": "Collection for tracking logged-in users and registration metadata."
+    },
+    "/folders/{folderId}": {
+      "schema": "Folder",
+      "description": "Collection for survey folders."
+    },
+    "/surveys/{surveyId}": {
+      "schema": "Survey",
+      "description": "Root collection for all surveys."
+    },
+    "/surveys/{surveyId}/responses/{responseId}": {
+      "schema": "Response",
+      "description": "Subcollection containing actual submissions for a specific survey."
+    },
+    "/surveys/{surveyId}/comments/{commentId}": {
+      "schema": "Comment",
+      "description": "Subcollection containing comments for fixed questions."
+    }
+  }
+}

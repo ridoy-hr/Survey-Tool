@@ -1,0 +1,127 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(data) { return isSignedIn() && data.ownerId == request.auth.uid; }
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    // --- Validation Blueprints ---
+    function isValidSurvey(data) {
+      return data.title is string && data.title.size() <= 300 &&
+             data.status in ['Draft', 'Active', 'Closed'] &&
+             data.ownerId is string &&
+             data.ownerId.size() <= 128 &&
+             data.responses is number &&
+             (data.get('folderId', null) == null || data.get('folderId', '') is string) &&
+             (data.get('theme', 'professional') is string) &&
+             (data.get('isStarred', false) is bool) &&
+             (data.get('isDeleted', false) is bool) &&
+             (data.get('isShared', false) is bool) &&
+             (data.get('thankYouHtml', '') is string) &&
+             (data.get('ownerEmail', '') is string) &&
+             (data.get('sharedEmails', []) is list) &&
+             (data.get('questions', []) is list);
+    }
+
+    function isValidResponse(data) {
+      return data.surveyId is string &&
+             data.answers is map &&
+             (data.submittedAt == request.time || data.get('submittedAt', null) == null);
+    }
+
+    function isValidComment(data) {
+      return data.questionId is string &&
+             data.text is string && data.text.size() <= 2000 &&
+             (data.get('name', '') is string) &&
+             (data.get('email', '') is string) &&
+             data.createdAt is string &&
+             (data.get('status', 'pending') in ['pending', 'done', 'active']) &&
+             (data.get('updatedAt', '') is string);
+    }
+
+    function isValidFolder(data) {
+      return data.name is string && data.name.size() <= 100 &&
+             data.userId == request.auth.uid &&
+             data.order is number;
+    }
+
+    // --- Collections ---
+    match /folders/{folderId} {
+      allow list, get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidFolder(incoming());
+      allow update: if isSignedIn() && isValidFolder(incoming()) && 
+                       incoming().userId == existing().userId;
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isSignedIn() && request.auth.token.email == "mridoy@hr.com";
+      allow create, update: if isSignedIn() && (request.auth.uid == userId || request.auth.token.email == "mridoy@hr.com");
+    }
+
+    match /surveys/{surveyId} {
+      // Allow any user to get surveys (public prototype)
+      allow get: if true; 
+      allow list: if isSignedIn() && (
+        resource.data.ownerId == request.auth.uid || 
+        request.auth.token.email == "mridoy@hr.com" || 
+        request.auth.token.email in resource.data.get('sharedEmails', [])
+      );
+      
+      allow create: if isSignedIn() && isValidSurvey(incoming());
+      
+      allow update: if (
+        isSignedIn() && isValidSurvey(incoming()) && (
+          // Full update by owner, admin, or shared collaborator
+          (
+            existing().ownerId == request.auth.uid || 
+            request.auth.token.email == "mridoy@hr.com" || 
+            request.auth.token.email in existing().get('sharedEmails', [])
+          ) &&
+          incoming().ownerId == existing().ownerId &&
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'title', 'status', 'isStarred', 'isShared', 'isDeleted', 'links', 
+            'responses', 'completionRate', 'lastResponse', 'lastOpenedAt', 'questions', 'thankYouHtml', 'folderId', 'theme', 'ownerEmail', 'sharedEmails'
+          ])
+        )
+      ) || (
+        // Action: Respondent Update (increment responses or update links/clicks)
+        // Publicly allow response increments
+        incoming().diff(existing()).affectedKeys().hasAny(['responses', 'lastResponse', 'links']) &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['responses', 'lastResponse', 'links']) &&
+        incoming().title == existing().title &&
+        incoming().ownerId == existing().ownerId
+      );
+
+      allow delete: if isSignedIn() && (
+        existing().ownerId == request.auth.uid || 
+        request.auth.token.email == "mridoy@hr.com"
+      );
+
+      match /responses/{responseId} {
+        // Only owners can list responses (analytics)
+        allow list: if isOwner(get(/databases/$(database)/documents/surveys/$(surveyId)).data) || 
+                       get(/databases/$(database)/documents/surveys/$(surveyId)).data.get('isShared', false) == true;
+        allow create: if isValidResponse(incoming()); // Public submission
+        allow get, delete: if isOwner(get(/databases/$(database)/documents/surveys/$(surveyId)).data);
+        allow update: if false; // One-way submission
+      }
+
+      match /comments/{commentId} {
+        allow list, get: if true; // Publicly viewable comments for this survey
+        allow create: if isValidComment(incoming()); // Anyone can comment
+        allow update: if (isOwner(get(/databases/$(database)/documents/surveys/$(surveyId)).data) || true) && isValidComment(incoming());
+        allow delete: if isOwner(get(/databases/$(database)/documents/surveys/$(surveyId)).data) || true;
+      }
+    }
+  }
+}

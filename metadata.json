@@ -1,0 +1,6 @@
+{
+  "name": "HR.com Survey Platform",
+  "description": "A professional survey building and management platform for HR professionals and research teams.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
